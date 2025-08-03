@@ -1,0 +1,355 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Godot Hello World</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #2f2f2f;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        .game-container {
+            text-align: center;
+            color: white;
+            width: 800px;
+            height: 600px;
+            position: relative;
+            overflow: hidden;
+        }
+        h1 {
+            font-size: 64px;
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 24px;
+            margin-bottom: 40px;
+        }
+        .start-button {
+            background-color: #478cbf;
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .start-button:hover {
+            background-color: #3474a4;
+        }
+        .scene {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+        }
+        .scene.active {
+            display: block;
+        }
+        .ball {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: #ff5555;
+            border-radius: 50%;
+            top: 200px;
+            left: 375px;
+            transition: transform 0.1s linear;
+        }
+        .floor {
+            position: absolute;
+            width: 100%;
+            height: 50px;
+            background-color: #55aa55;
+            bottom: 0;
+        }
+        .platform {
+            position: absolute;
+            height: 20px;
+            background-color: #5555aa;
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <div id="main-menu" class="scene active">
+            <h1>Hello World!</h1>
+            <p>This is a simple Godot web game.</p>
+            <button id="start-button" class="start-button">Start Game</button>
+        </div>
+        <div id="game-scene" class="scene">
+            <div class="ball"></div>
+            <div class="floor"></div>
+        </div>
+    </div>
+
+    <script>
+        // Game physics variables
+        let ballX = 375;
+        let ballY = 200;
+        let velocityX = 0;
+        let velocityY = 0;
+        let gravity = 0.5;
+        let friction = 0.8;
+        let bounce = 0.7;
+        let acceleration = 0.2;
+        let maxSpeed = 8;
+        let isJumping = false;
+        let jumpCount = 0;
+        let maxJumps = 3;
+        let jumpForce = 12;
+        let jumpDecay = 0.7; // Each subsequent jump is 70% as powerful
+        let lastJumpTime = 0;
+        let jumpCooldown = 300; // Milliseconds between jumps
+        let keys = {};
+        let keysPressed = {};
+        let gameActive = false;
+        let ball;
+        let floorY;
+        let gameLoopInterval;
+        
+        // Platform variables
+        let platforms = [];
+        let platformSpeed = 2;
+        let platformSpawnInterval = 2000; // Milliseconds between platform spawns
+        let lastPlatformTime = 0;
+        let platformContainer;
+        
+        // Start button click handler
+        document.getElementById('start-button').addEventListener('click', function() {
+            document.getElementById('main-menu').classList.remove('active');
+            document.getElementById('game-scene').classList.add('active');
+            
+            // Initialize game
+            ball = document.querySelector('.ball');
+            floorY = document.querySelector('.game-container').clientHeight - document.querySelector('.floor').clientHeight - ball.clientHeight;
+            
+            // Create platform container
+            platformContainer = document.createElement('div');
+            platformContainer.id = 'platform-container';
+            document.querySelector('#game-scene').appendChild(platformContainer);
+            
+            // Clear any existing platforms
+            platforms = [];
+            
+            // Start game loop
+            gameActive = true;
+            startGameLoop();
+            lastPlatformTime = Date.now();
+            
+            // Add keyboard event listeners
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+        });
+        
+        function handleKeyDown(e) {
+            keys[e.key] = true;
+        }
+        
+        function handleKeyUp(e) {
+            keys[e.key] = false;
+        }
+        
+        function startGameLoop() {
+            gameLoopInterval = setInterval(updateGame, 16); // ~60fps
+        }
+        
+        function createPlatform() {
+            // Generate random platform properties
+            const width = Math.random() * 150 + 50; // Random width between 50 and 200
+            const height = 20;
+            const y = Math.random() * 300 + 150; // Random y position between 150 and 450
+            
+            // Create platform element
+            const platform = document.createElement('div');
+            platform.className = 'platform';
+            platform.style.width = width + 'px';
+            platform.style.height = height + 'px';
+            platform.style.left = '800px'; // Start from right edge
+            platform.style.top = y + 'px';
+            
+            // Add to DOM and platforms array
+            platformContainer.appendChild(platform);
+            
+            // Add to platforms array with its properties
+            platforms.push({
+                element: platform,
+                x: 800,
+                y: y,
+                width: width,
+                height: height
+            });
+        }
+        
+        function updatePlatforms() {
+            const currentTime = Date.now();
+            
+            // Check if there's enough space for a new platform
+            let canCreatePlatform = true;
+            const rightmostPlatformX = platforms.reduce((max, p) => 
+                Math.max(max, p.x + p.width), 0);
+                
+            // Only create a new platform if the rightmost platform is at least 300px away from the right edge
+            if (rightmostPlatformX > 500) {
+                canCreatePlatform = false;
+            }
+            
+            // Spawn new platform if it's time and there's enough space
+            if (canCreatePlatform && currentTime - lastPlatformTime > platformSpawnInterval) {
+                createPlatform();
+                lastPlatformTime = currentTime;
+                
+                // Randomize next spawn interval
+                platformSpawnInterval = Math.random() * 2000 + 1000; // Between 1 and 3 seconds
+            }
+            
+            // Update platform positions
+            for (let i = platforms.length - 1; i >= 0; i--) {
+                const platform = platforms[i];
+                
+                // Move platform left
+                platform.x -= platformSpeed;
+                platform.element.style.left = platform.x + 'px';
+                
+                // Remove platform if it's off screen
+                if (platform.x + platform.width < 0) {
+                    platformContainer.removeChild(platform.element);
+                    platforms.splice(i, 1);
+                }
+            }
+        }
+        
+        function updateGame() {
+            if (!gameActive) return;
+            
+            // Update platforms
+            updatePlatforms();
+            
+            // Handle keyboard input with acceleration
+            if (keys['ArrowLeft']) {
+                velocityX -= acceleration;
+                // Cap the maximum speed
+                if (velocityX < -maxSpeed) {
+                    velocityX = -maxSpeed;
+                }
+            }
+            if (keys['ArrowRight']) {
+                velocityX += acceleration;
+                // Cap the maximum speed
+                if (velocityX > maxSpeed) {
+                    velocityX = maxSpeed;
+                }
+            }
+            
+            // Check if ball is on any platform
+            let onPlatform = false;
+            let platformY = 0;
+            
+            for (const platform of platforms) {
+                // Check if ball is above the platform and falling
+                if (velocityY >= 0 && 
+                    ballY + 50 >= platform.y && 
+                    ballY + 50 <= platform.y + 10 && 
+                    ballX + 25 >= platform.x && 
+                    ballX + 25 <= platform.x + platform.width) {
+                    
+                    onPlatform = true;
+                    platformY = platform.y - 50; // 50 is ball height
+                    break;
+                }
+            }
+            
+            // Handle jumping with multiple air jumps
+            if (keys['ArrowUp'] && !keysPressed['ArrowUp']) {
+                keysPressed['ArrowUp'] = true;
+                
+                const currentTime = Date.now();
+                
+                // Allow jump if on floor/platform or if we have jumps remaining and cooldown passed
+                if ((ballY >= floorY - 5 || onPlatform) || 
+                    (isJumping && jumpCount < maxJumps && currentTime - lastJumpTime > jumpCooldown)) {
+                    
+                    // Reset jump count if on floor or platform
+                    if (ballY >= floorY - 5 || onPlatform) {
+                        jumpCount = 0;
+                    }
+                    
+                    // Calculate jump force with decay for subsequent jumps
+                    const currentJumpForce = jumpForce * Math.pow(jumpDecay, jumpCount);
+                    velocityY = -currentJumpForce;
+                    
+                    isJumping = true;
+                    jumpCount++;
+                    lastJumpTime = currentTime;
+                }
+            }
+            
+            // Track key release
+            if (!keys['ArrowUp']) {
+                keysPressed['ArrowUp'] = false;
+            }
+            
+            // Apply physics
+            velocityY += gravity;
+            
+            // Update position
+            ballX += velocityX;
+            ballY += velocityY;
+            
+            // Apply friction only when not pressing movement keys
+            if (!keys['ArrowLeft'] && !keys['ArrowRight']) {
+                velocityX *= friction;
+            }
+            
+            // Boundary checks
+            // Left and right walls
+            if (ballX < 0) {
+                ballX = 0;
+                velocityX = -velocityX * bounce;
+            } else if (ballX > 750) { // 800 - ball width
+                ballX = 750;
+                velocityX = -velocityX * bounce;
+            }
+            
+            // Platform collision
+            if (onPlatform && velocityY > 0) {
+                ballY = platformY;
+                velocityY = -velocityY * bounce;
+                
+                // Only reset jumping if the bounce is small enough
+                if (Math.abs(velocityY) < 1) {
+                    velocityY = 0;
+                    isJumping = false;
+                }
+            }
+            
+            // Floor collision
+            if (ballY > floorY) {
+                ballY = floorY;
+                velocityY = -velocityY * bounce;
+                
+                // Only reset jumping if the bounce is small enough
+                if (Math.abs(velocityY) < 1) {
+                    velocityY = 0;
+                    isJumping = false;
+                }
+            }
+            
+            // Update ball position
+            ball.style.left = ballX + 'px';
+            ball.style.top = ballY + 'px';
+        }
+    </script>
+</body>
+</html>
